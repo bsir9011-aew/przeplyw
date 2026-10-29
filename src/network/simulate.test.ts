@@ -97,6 +97,11 @@ describe("feedback", () => {
       simulate(initialNetwork(), probe()),
     );
     expect(f.mismatch).toContain("Krok 2");
+    expect(f.evidence.device).toBe("SW1");
+    expect(f.evidence.code).toBe("L2_FORWARD");
+    expect(f.mismatch).toContain(f.evidence.detail);
+    expect(f.locationCorrect).toBe(false);
+    expect(f.reasonCorrect).toBe(false);
   });
   it("potwierdza poprawne przewidywanie", () => {
     expect(
@@ -109,5 +114,40 @@ describe("feedback", () => {
         simulate(repaired(), probe()),
       ).mismatch,
     ).toBeUndefined();
+  });
+});
+
+describe("dowód na granicy przewidywanej drogi", () => {
+  it("gdy przewidywanie kończy się za wcześnie, wyjaśnia kolejny rzeczywisty krok", () => {
+    const f = assess(
+      { path: ["PC1"], stop: "PC1", reason: "gateway" },
+      simulate(initialNetwork(), probe()),
+    );
+    expect(f.evidence.code).toBe("L2_FORWARD");
+    expect(f.mismatch).toContain("koniec drogi");
+    expect(f.mismatch).toContain(f.evidence.detail);
+  });
+  it("gdy przewidywanie idzie dalej niż pakiet, wskazuje decyzję zatrzymującą", () => {
+    const f = assess(
+      {
+        path: ["PC1", "SW1", "R1", "SERVER"],
+        stop: "delivered",
+        reason: "delivered",
+      },
+      simulate(initialNetwork(), probe()),
+    );
+    expect(f.evidence.code).toBe("ACL_DENY");
+    expect(f.evidence.ruleId).toBe("deny-subnets");
+    expect(f.mismatch).toContain(f.evidence.detail);
+  });
+  it("błędne urządzenie początkowe wyjaśnia decyzją źródła, zachowując niezależną ocenę miejsca i przyczyny", () => {
+    const f = assess(
+      { path: ["SW1", "R1"], stop: "R1", reason: "acl" },
+      simulate(initialNetwork(), probe()),
+    );
+    expect(f.evidence.code).toBe("HOST_ROUTE");
+    expect(f.routeCorrect).toBe(false);
+    expect(f.locationCorrect).toBe(true);
+    expect(f.reasonCorrect).toBe(true);
   });
 });

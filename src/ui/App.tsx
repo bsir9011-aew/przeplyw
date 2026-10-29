@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   deviceIds,
   type DeviceId,
@@ -67,6 +67,16 @@ export default function App() {
   const [current, setCurrent] = useState<Attempt | null>(null);
   const [step, setStep] = useState(0);
   const [undo, setUndo] = useState<typeof network | null>(null);
+  const resultPanel = useRef<HTMLElement>(null);
+  const predictionHeading = useRef<HTMLHeadingElement>(null);
+  const canExperiment = attempts.length > 0;
+  useEffect(() => {
+    if (!current) return;
+    resultPanel.current?.focus({ preventScroll: true });
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      resultPanel.current?.scrollIntoView({ block: "start" });
+    }
+  }, [current]);
   const result = current?.result;
   const activeStep = result?.trace[step];
   const feedback = current ? assess(current.prediction, current.result) : null;
@@ -80,8 +90,13 @@ export default function App() {
     setReason("");
     setCurrent(null);
     setStep(0);
+    predictionHeading.current?.focus({ preventScroll: true });
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      predictionHeading.current?.scrollIntoView({ block: "start" });
+    }
   }
   function changeRules(restore = false) {
+    if (!canExperiment || (restore && !undo)) return;
     const previous = network;
     setNetwork(
       restore && undo
@@ -139,8 +154,7 @@ export default function App() {
           <div>
             <b>Twoja misja</b>
             <p>
-              Dostarcz <strong>TCP/443</strong> do serwera.
-              <br />
+              Dostarcz <strong>TCP/443</strong> do serwera. <br />
               Zachowaj blokadę <strong>TCP/22</strong>.
             </p>
           </div>
@@ -165,7 +179,7 @@ export default function App() {
                 <path d="M50 50H350" />
                 <path className="wire-accent" d="M50 50H150" />
               </svg>
-              {deviceIds.map((id, i) => (
+              {deviceIds.map((id) => (
                 <div className="device" key={id}>
                   <button
                     className={`device-button ${selected === id ? "selected" : ""} ${activeStep?.device === id ? "active" : ""} ${activeStep?.device === id && result?.status === "dropped" && step === result.trace.length - 1 ? "blocked" : ""}`}
@@ -177,14 +191,17 @@ export default function App() {
                   </button>
                   <b>{id}</b>
                   <small>
-                    {
-                      [
-                        "192.168.10.10",
-                        "VLAN 10",
-                        "Router / ACL",
-                        "192.168.20.10",
-                      ][i]
-                    }
+                    {id === "PC1" || id === "SERVER" ? (
+                      <>
+                        192.168.
+                        <wbr />
+                        {id === "PC1" ? "10.10" : "20.10"}
+                      </>
+                    ) : id === "SW1" ? (
+                      "VLAN 10"
+                    ) : (
+                      "Router / ACL"
+                    )}
                   </small>
                 </div>
               ))}
@@ -240,7 +257,7 @@ export default function App() {
             )}
             <div className="divider" />
             <div className="section-title">
-              <h2>
+              <h2 ref={predictionHeading} tabIndex={-1}>
                 <span className="step-number">1</span> Przewidź przebieg
               </h2>
               <span className="revision">KONFIG. {revision + 1}</span>
@@ -330,55 +347,15 @@ export default function App() {
             </p>
           </section>
           <div className="side-column">
-            <section className="rules-panel">
+            <section
+              className="result-panel"
+              aria-label="Wynik symulacji"
+              ref={resultPanel}
+              tabIndex={-1}
+            >
               <div className="section-title">
                 <h2>
-                  <span className="step-number">2</span> Zmień reguły
-                </h2>
-                <span className="pill">R1 · FORWARD</span>
-              </div>
-              <p className="hint">Pierwsze dopasowanie wygrywa.</p>
-              <ol className="rules">
-                {network.router.rules.map((r, i) => (
-                  <li key={r.id} className={r.action}>
-                    <span className="rule-index">0{i + 1}</span>
-                    <div>
-                      <span className={`action ${r.action}`}>
-                        {r.action.toUpperCase()}
-                      </span>{" "}
-                      <b>
-                        {r.destinationPort
-                          ? `TCP / ${r.destinationPort}`
-                          : "Dowolny protokół"}
-                      </b>
-                      <small>192.168.10.0/24 → 192.168.20.0/24</small>
-                      <code>{r.id}</code>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-              <div className="rule-actions">
-                <button className="secondary" onClick={() => changeRules()}>
-                  ⇅ Zamień kolejność
-                </button>
-                <button
-                  className="text-button"
-                  disabled={!undo}
-                  onClick={() => changeRules(true)}
-                >
-                  Cofnij
-                </button>
-              </div>
-              <p className="hint rule-note" role="status">
-                {revision > 0
-                  ? "Konfiguracja zmieniona. Wykonaj nowe przewidywanie."
-                  : "Zmieniaj kolejność i obserwuj konsekwencje."}
-              </p>
-            </section>
-            <section className="result-panel" aria-label="Wynik symulacji">
-              <div className="section-title">
-                <h2>
-                  <span className="step-number">3</span> Zaobserwuj
+                  <span className="step-number">2</span> Uruchom i zaobserwuj
                 </h2>
                 {current && (
                   <span className={`result-tag ${result?.status}`}>
@@ -522,6 +499,57 @@ export default function App() {
                   </div>
                 </>
               )}
+            </section>
+            <section className="rules-panel">
+              <div className="section-title">
+                <h2>
+                  <span className="step-number">3</span> Zmień reguły
+                </h2>
+                <span className="pill">R1 · FORWARD</span>
+              </div>
+              <p className="hint">Pierwsze dopasowanie wygrywa.</p>
+              <ol className="rules">
+                {network.router.rules.map((r, i) => (
+                  <li key={r.id} className={r.action}>
+                    <span className="rule-index">0{i + 1}</span>
+                    <div>
+                      <span className={`action ${r.action}`}>
+                        {r.action.toUpperCase()}
+                      </span>{" "}
+                      <b>
+                        {r.destinationPort
+                          ? `TCP / ${r.destinationPort}`
+                          : "Dowolny protokół"}
+                      </b>
+                      <small>192.168.10.0/24 → 192.168.20.0/24</small>
+                      <code>{r.id}</code>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <div className="rule-actions">
+                <button
+                  className="secondary"
+                  disabled={!canExperiment}
+                  onClick={() => changeRules()}
+                >
+                  ⇅ Zamień kolejność
+                </button>
+                <button
+                  className="text-button"
+                  disabled={!canExperiment || !undo}
+                  onClick={() => changeRules(true)}
+                >
+                  Cofnij
+                </button>
+              </div>
+              <p className="hint rule-note" role="status">
+                {!canExperiment
+                  ? "Najpierw przewidź przebieg i uruchom pierwszą symulację. Potem odblokujesz zmianę reguł."
+                  : revision > 0
+                    ? "Konfiguracja zmieniona. Wróć do kroku 1 i przewidź ponownie."
+                    : "Pierwsza próba wykonana. Teraz możesz eksperymentować."}
+              </p>
             </section>
           </div>
         </div>

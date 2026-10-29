@@ -10,10 +10,19 @@ export function assess(prediction: Prediction, result: Result) {
       ? "delivered"
       : result.trace[result.trace.length - 1].device;
   const routeIndex = Math.max(prediction.path.length, result.path.length);
+  const terminalEvidence = result.trace[result.trace.length - 1];
+  // result.path collapses consecutive events on a device. Keep that same
+  // alignment instead of looking up the first event by device ID.
+  const pathEvidence = result.trace.filter(
+    (event, index) =>
+      index === 0 || event.device !== result.trace[index - 1].device,
+  );
+  let evidence = terminalEvidence;
   let mismatch: string | undefined;
   for (let i = 0; i < routeIndex; i++) {
     if (prediction.path[i] !== result.path[i]) {
-      mismatch = `Krok ${i + 1}: przewidziano ${prediction.path[i] ?? "koniec drogi"}, przebieg wskazuje ${result.path[i] ?? "koniec drogi"}.`;
+      evidence = pathEvidence[i] ?? terminalEvidence;
+      mismatch = `Krok ${i + 1}: przewidziano ${prediction.path[i] ?? "koniec drogi"}, przebieg wskazuje ${result.path[i] ?? "koniec drogi"}. ${evidence.detail}`;
       break;
     }
   }
@@ -28,6 +37,6 @@ export function assess(prediction: Prediction, result: Result) {
     reasonCorrect,
     routeCorrect: prediction.path.join(",") === result.path.join(","),
     mismatch,
-    evidence: result.trace[result.trace.length - 1],
+    evidence,
   };
 }

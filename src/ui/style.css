@@ -749,6 +749,100 @@ select {
     font-size: 15px;
   }
 }
+/* Small-screen reading sizes; keep the existing visual language. */
+@media (max-width: 760px) {
+  .intro,
+  .mission p,
+  .hint,
+  .config,
+  .trace-step p,
+  .feedback p,
+  .history-item p {
+    font-size: 14px;
+  }
+  .model-note,
+  .rule-note,
+  .feedback small,
+  .feedback .comparison,
+  .rules small,
+  .rules code {
+    font-size: 12px;
+  }
+  .device b {
+    font-size: 13px;
+  }
+  .device small {
+    font-size: 11px;
+    white-space: normal;
+    line-height: 1.4;
+  }
+  .network-labels {
+    font-size: 11px;
+    padding-inline: 0;
+    gap: 12px;
+  }
+  .topology {
+    margin-bottom: 8px;
+  }
+  .prediction-fields {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  label {
+    font-size: 14px;
+  }
+  select {
+    font-size: 16px;
+    min-height: 48px;
+    padding: 0 10px;
+  }
+  .path-buttons button {
+    font-size: 12px;
+    padding: 8px 3px;
+    text-align: center;
+  }
+  .path-buttons button span {
+    display: block;
+    float: none;
+  }
+  .predicted-path {
+    font-size: 13px;
+  }
+  .section-title {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .pill,
+  .revision,
+  .result-tag {
+    font-size: 10px;
+  }
+  .rules b,
+  .action,
+  .trace-meta {
+    font-size: 12px;
+  }
+  .primary,
+  .secondary,
+  .text-button,
+  .playback button {
+    font-size: 14px;
+  }
+  .feedback-checks,
+  .checks > div,
+  .success,
+  .full-trace,
+  .full-trace button {
+    font-size: 13px;
+  }
+  .result-panel {
+    scroll-margin-top: 16px;
+  }
+  .rules li {
+    padding: 12px 8px;
+    gap: 8px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
