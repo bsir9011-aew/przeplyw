@@ -1,6 +1,6 @@
-# PRZEPŁYW · First Interactive Network Lab
+# PRZEPŁYW · Network Failure Scenarios
 
-Mobilne laboratorium: przewidź → uruchom → prześledź decyzje → zmień kolejność ACL → sprawdź ponownie.
+Trzy mobilne laboratoria: ACL, Gateway i VLAN. Wybierz problem, przewidź → uruchom → prześledź decyzje → zmień konfigurację → sprawdź ponownie.
 
 ## Uruchomienie
 
@@ -15,11 +15,17 @@ Otwórz adres wyświetlony przez Vite ze ścieżką `/przeplyw/`. Telefon w tej 
 
 ## Ćwiczenie
 
-1. Dotknij urządzeń, aby obejrzeć konfigurację.
-2. Dodaj drogę przyciskami PC1, SW1, R1, SERVER (PC1 jest już wybrany); usuń ostatni element przyciskiem ↶.
-3. Wybierz miejsce zakończenia i przyczynę, uruchom symulację.
-4. Krokami przejrzyj decyzje, porównaj przewidywanie i faktyczny wynik.
-5. Zamień kolejność reguł R1. Wykonaj nowe przewidywanie i uruchom próbę. Testy celu pokażą osobno TCP/443 oraz TCP/22.
+1. Wybierz ACL, Gateway lub VLAN. Przycisk „Wznów” prowadzi do zachowanego postępu danego laboratorium.
+2. Dotknij urządzeń, aby obejrzeć aktualną konfigurację, adresację i przypisania portów.
+3. Dodaj drogę przyciskami urządzeń (PC1 jest już wybrany), wskaż miejsce zakończenia i przyczynę. Uruchom symulację.
+4. Przejrzyj ślad i pierwszą rozbieżność. Dopiero po pierwszej próbie odblokowany jest edytor właściwego parametru:
+   - ACL: kolejność dwóch reguł R1.
+   - Gateway: adres IPv4 bramy PC1.
+   - VLAN: przypisanie portu SW1:p2 do VLAN (1–4094).
+5. Przetestuj własną zmianę i nowe przewidywanie. Cel jest sprawdzany przez dostarczenie TCP/443 i zachowanie blokady TCP/22. Możesz cofnąć zmianę.
+6. Wróć do wyboru laboratoriów. Konfiguracja, próby, przewidywanie, cofnięcie i krok odtwarzania są przechowywane osobno dla każdego laboratorium.
+
+Gateway rozróżnia adres bramy poza podsiecią hosta (`GATEWAY_OUTSIDE_SUBNET`) od lokalnego adresu bez osiągalnego sąsiada (`GATEWAY_UNREACHABLE`). Brak osiągalności znanego interfejsu bramy przez niespójne VLAN pozostaje problemem L2. Są to obliczenia konfiguracji i łączy, nie odpowiedzi przypisane do identyfikatorów zadań. Router nie zmienia VLAN pakietu IP; na wyjściu tworzy nową ramkę.
 
 ## Model i ograniczenia
 
@@ -29,7 +35,7 @@ Zakres: jedna jawna topologia PC1–SW1–R1–SERVER, jeden router, hosty z jed
 
 Przewidywanie jest przypisane do rewizji konfiguracji; po zmianie i cofnięciu trzeba wykonać nowe. Sesja zapisuje się automatycznie w IndexedDB przez `idb`: konfiguracja i cofnięcie zmiany, rozpoczęte przewidywanie, historia prób, wyniki, oceny, wybrane urządzenie i krok odtwarzania. Poczekaj na status „Sesja zapisana na tym urządzeniu” przed zamknięciem.
 
-Przy uruchomieniu aplikacja czeka na odczyt przed odblokowaniem ćwiczenia, żeby pusty stan nie nadpisał zapisu. Wersjonujemy format, scenariusz i silnik; niezgodny lub uszkodzony zapis rozpoczyna nowe ćwiczenie z komunikatem. Wyniki i feedback są przeliczane z zapisanej konfiguracji prób. Niedostępny IndexedDB lub błąd zapisu przełącza aplikację na pamięć z wyraźnym statusem. Dane są lokalne dla przeglądarki i domeny: czyszczenie danych witryny lub usunięcie ich przez przeglądarkę może skasować postęp. Bez kont i synchronizacji.
+Przy uruchomieniu aplikacja czeka na odczyt przed odblokowaniem ćwiczenia, żeby pusty stan nie nadpisał zapisu. Format 2 przechowuje identyfikator aktywnego laboratorium, widok wyboru i osobne sesje. Zapis formatu 1 z PR #2 jest migrowany do ACL z zachowaniem konfiguracji, historii, przewidywania, cofnięcia i bieżącej próby/kroku. Oryginalny rekord pozostaje w tym samym magazynie pod kluczem `backup-pr2`, zanim nowy format może nadpisać `active`. Nieznane lub uszkodzone dane są zachowywane pod `backup-unrecognized` przed rozpoczęciem nowej sesji. Kopie nie są automatycznie kasowane. W razie błędu utworzenia kopii aplikacja przechodzi do pracy w pamięci i nie zastępuje oryginału. Wyniki i feedback są przeliczane z zapisanej konfiguracji prób. Niedostępny IndexedDB lub błąd zapisu przełącza aplikację na pamięć z wyraźnym statusem. Dane są lokalne dla przeglądarki i domeny: czyszczenie danych witryny lub usunięcie ich przez przeglądarkę może skasować postęp. Bez kont i synchronizacji.
 
 ## PWA, instalacja i offline
 
@@ -74,4 +80,4 @@ npm run build
 
 Testy sprawdzają mechanikę i feedback, nie wygląd ani strukturę komponentów. Interfejs obsługuje krokowanie bez automatycznej animacji, duże przyciski, fokus klawiatury i ograniczenie ruchu. Na telefonie sprawdź przewidywanie, zmianę ACL, cofnięcie oraz historię.
 
-Build dodatkowo sprawdza manifest, bazę i scope, rozmiary PNG oraz pokrycie zasobów przez precache. Nie dodano nowych laboratoriów ani możliwości symulatora.
+Build dodatkowo sprawdza manifest, bazę i scope, rozmiary PNG oraz pokrycie zasobów przez precache. PWA i workflow Pages pozostają bez zmian. Mobile QA pozostaje PENDING. Dane scenariuszy są w `src/scenarios/labs.ts`; silnik nie zna ich identyfikatorów.

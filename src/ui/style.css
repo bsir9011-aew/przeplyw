@@ -862,3 +862,47 @@ select {
 .session-status button {
   margin: 8px 0 0 8px;
 }
+
+.lab-picker {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin: 24px 0;
+}
+.lab-picker article {
+  background: white;
+  border: 1px solid #dce3df;
+  border-radius: 16px;
+  padding: 22px;
+}
+.lab-picker h2 {
+  margin: 14px 0;
+  font-size: 18px;
+}
+.lab-picker p {
+  min-height: 70px;
+  font-size: 15px;
+}
+.lab-picker button {
+  width: 100%;
+}
+.rules-panel form {
+  margin-top: 18px;
+}
+.rules-panel input {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid #d6e0d9;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0 14px;
+}
+.rules-panel input:focus-visible {
+  outline: 3px solid #0d8a82;
+  outline-offset: 2px;
+}
+.device small {
+  overflow-wrap: anywhere;
+}

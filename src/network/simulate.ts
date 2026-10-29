@@ -80,12 +80,19 @@ export function simulate(n: Network, p: Probe): Result {
       ? `Cel lokalny. Następny skok: ${p.destination}.`
       : `Cel poza ${host.interface.cidr}. Brama: ${hop ?? "brak"}.`,
   });
-  if (!hop || !inSubnet(hop, host.interface.cidr))
+  if (!hop)
     return stop(
       host.id,
       "gateway",
       "NO_GATEWAY",
-      "Brak bramy w lokalnej podsieci hosta.",
+      "Dla zdalnego celu host nie ma bramy domyślnej.",
+    );
+  if (!inSubnet(hop, host.interface.cidr))
+    return stop(
+      host.id,
+      "gateway",
+      "GATEWAY_OUTSIDE_SUBNET",
+      `Brama ${hop} leży poza lokalną podsiecią ${host.interface.cidr}. Host nie ma lokalnego następnego skoku.`,
     );
   const interfaces = [
     ...n.hosts.map((h) => h.interface),
@@ -95,13 +102,26 @@ export function simulate(n: Network, p: Probe): Result {
     (i) =>
       parseCidr(i.cidr).address === hop && l2Path(n, host.interface.id, i.id),
   );
-  if (!neighbor)
+  if (!neighbor) {
+    const known = interfaces.some((i) => parseCidr(i.cidr).address === hop);
+    if (hop !== p.destination && !known)
+      return stop(
+        host.id,
+        "gateway",
+        "GATEWAY_UNREACHABLE",
+        `Brama ${hop} ma lokalny adres, ale nie ma osiągalnego sąsiada pod tym adresem. Lokalność adresu nie gwarantuje osiągalności.`,
+      );
+    const ports = n.switch.ports;
+    const detail = ports
+      .map((port) => `${port.id}: VLAN ${port.vlan}`)
+      .join(", ");
     return stop(
       host.id,
       "l2",
       "NEIGHBOR_UNREACHABLE",
-      `Nie można osiągnąć sąsiada ${hop} w lokalnej sieci L2. Sprawdź łącza, porty i VLAN.`,
+      `Nie można osiągnąć sąsiada ${hop} w lokalnej sieci L2. Sprawdź łącza, porty i VLAN (${detail}). To logiczny test osiągalności; nie odtwarzamy ramek ARP.`,
     );
+  }
   const firstPath = l2Path(n, host.interface.id, neighbor.id)!;
   if (firstPath.some((id) => id.startsWith("SW1:")))
     step({

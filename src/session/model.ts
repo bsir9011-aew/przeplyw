@@ -1,5 +1,11 @@
-import { initialNetwork, probe } from "../network/scenario";
+import {
+  scenarioIds,
+  scenarioNetwork,
+  scenarioProbe,
+  type ScenarioId,
+} from "../scenarios/labs";
 import { simulate } from "../network/simulate";
+import { ipv4 } from "../network/ipv4";
 import { assess, type Prediction } from "../assessment/feedback";
 import {
   deviceIds,
@@ -8,15 +14,21 @@ import {
   type Reason,
   type Result,
 } from "../network/model";
+import {
+  decodeSession as decodeLegacy,
+  type Session as LegacySession,
+} from "./legacy";
 export type Attempt = {
   revision: number;
   rules: string[];
+  network: Network;
   prediction: Prediction;
   result: Result;
   checks: Result[];
   assessment: ReturnType<typeof assess>;
 };
 export type Session = {
+  scenarioId: ScenarioId;
   network: Network;
   revision: number;
   selected: DeviceId | null;
@@ -28,8 +40,14 @@ export type Session = {
   step: number;
   undo: Network | null;
 };
-export const freshSession = (): Session => ({
-  network: initialNetwork(),
+export type Workspace = {
+  activeScenario: ScenarioId;
+  showPicker: boolean;
+  labs: Partial<Record<ScenarioId, Session>>;
+};
+export const freshSession = (scenarioId: ScenarioId = "acl"): Session => ({
+  scenarioId,
+  network: scenarioNetwork(scenarioId),
   revision: 0,
   selected: null,
   path: ["PC1"],
@@ -40,10 +58,19 @@ export const freshSession = (): Session => ({
   step: 0,
   undo: null,
 });
-export const FORMAT_VERSION = 1;
-export const SCENARIO_VERSION = "network-acl-1";
-export const ENGINE_VERSION = 1;
-export const envelope = (state: Session) => ({
+export const workspaceFor = (
+  session = freshSession(),
+  showPicker = true,
+): Workspace => ({
+  activeScenario: session.scenarioId,
+  showPicker,
+  labs: { [session.scenarioId]: session },
+});
+export const freshWorkspace = () => workspaceFor();
+export const FORMAT_VERSION = 2;
+export const SCENARIO_VERSION = "network-labs-1";
+export const ENGINE_VERSION = 2;
+export const envelope = (state: Workspace) => ({
   formatVersion: FORMAT_VERSION,
   scenarioVersion: SCENARIO_VERSION,
   engineVersion: ENGINE_VERSION,
@@ -60,53 +87,142 @@ const path = (v: unknown): v is DeviceId[] =>
   Array.isArray(v) && v.length <= 1000 && v.every(device);
 const stop = (v: unknown): v is Prediction["stop"] =>
   v === "delivered" || device(v);
-function validNetwork(value: unknown): value is Network {
-  const normal = initialNetwork();
-  const reversed = initialNetwork();
-  reversed.router.rules.reverse();
-  return (
-    JSON.stringify(value) === JSON.stringify(normal) ||
-    JSON.stringify(value) === JSON.stringify(reversed)
-  );
+const scenario = (v: unknown): v is ScenarioId =>
+  scenarioIds.includes(v as ScenarioId);
+function validNetwork(value: unknown, id: ScenarioId): value is Network {
+  try {
+    const candidate = value as Network;
+    const expected = scenarioNetwork(id);
+    if (id === "acl") {
+      if (
+        candidate.router.rules.map((r) => r.id).join(",") ===
+        "allow-443,deny-subnets"
+      )
+        expected.router.rules.reverse();
+    } else if (id === "gateway") {
+      const gateway = candidate.hosts[0].gateway;
+      if (typeof gateway !== "string") return false;
+      ipv4(gateway);
+      expected.hosts[0].gateway = gateway;
+    } else {
+      const vlan = candidate.switch.ports[1].vlan;
+      if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) return false;
+      expected.switch.ports[1].vlan = vlan;
+    }
+    return JSON.stringify(candidate) === JSON.stringify(expected);
+  } catch {
+    return false;
+  }
 }
-function readAttempt(value: unknown): Attempt {
+export function makeAttempt(
+  network: Network,
+  revision: number,
+  prediction: Prediction,
+): Attempt {
+  const snapshot = structuredClone(network);
+  const result = simulate(snapshot, scenarioProbe());
+  return {
+    network: snapshot,
+    revision,
+    rules: snapshot.router.rules.map((r) => r.id),
+    prediction: structuredClone(prediction),
+    result,
+    checks: [result, simulate(snapshot, scenarioProbe(22))],
+    assessment: assess(prediction, result),
+  };
+}
+function readAttempt(v: unknown, id: ScenarioId): Attempt {
   if (
-    !object(value) ||
-    !integer(value.revision) ||
-    !Array.isArray(value.rules) ||
-    !object(value.prediction)
+    !object(v) ||
+    !integer(v.revision) ||
+    !validNetwork(v.network, id) ||
+    !object(v.prediction)
   )
     throw Error("attempt");
-  const network = initialNetwork();
-  const order = value.rules.join(",");
-  if (order === "allow-443,deny-subnets") network.router.rules.reverse();
-  else if (order !== "deny-subnets,allow-443") throw Error("rules");
-  const p = value.prediction;
+  const p = v.prediction;
   if (!path(p.path) || !stop(p.stop) || !reason(p.reason))
     throw Error("prediction");
-  const prediction: Prediction = {
+  return makeAttempt(v.network, v.revision, {
     path: p.path,
     stop: p.stop,
     reason: p.reason,
-  };
-  // Recompute derived evidence under the declared engine/scenario version.
-  const result = simulate(network, probe());
+  });
+}
+function readSession(v: unknown, id: ScenarioId): Session {
+  if (
+    !object(v) ||
+    v.scenarioId !== id ||
+    !validNetwork(v.network, id) ||
+    !integer(v.revision) ||
+    !(v.selected === null || device(v.selected)) ||
+    !path(v.path) ||
+    !(v.stop === "" || stop(v.stop)) ||
+    !(v.reason === "" || reason(v.reason)) ||
+    !Array.isArray(v.attempts) ||
+    !integer(v.step) ||
+    !(v.undo === null || validNetwork(v.undo, id))
+  )
+    throw Error("session");
+  const attempts = v.attempts.map((a) => readAttempt(a, id));
+  if (attempts.some((a) => a.revision > Number(v.revision)))
+    throw Error("revision");
+  const current = v.current === null ? null : readAttempt(v.current, id);
+  if (
+    current &&
+    (current.revision !== v.revision ||
+      JSON.stringify(current) !== JSON.stringify(attempts.at(-1)) ||
+      JSON.stringify(current.network) !== JSON.stringify(v.network))
+  )
+    throw Error("current");
+  if (v.step >= (current?.result.trace.length ?? 1)) throw Error("step");
+  if (
+    !attempts.length &&
+    (v.revision !== 0 ||
+      v.undo !== null ||
+      JSON.stringify(v.network) !== JSON.stringify(scenarioNetwork(id)))
+  )
+    throw Error("locked");
   return {
-    revision: value.revision,
-    rules: value.rules as string[],
-    prediction,
-    result,
-    checks: [result, simulate(network, probe(22))],
-    assessment: assess(prediction, result),
+    scenarioId: id,
+    network: v.network,
+    revision: v.revision,
+    selected: v.selected,
+    path: v.path,
+    stop: v.stop,
+    reason: v.reason,
+    attempts,
+    current,
+    step: v.step,
+    undo: v.undo,
   };
+}
+function migrate(old: LegacySession): Workspace {
+  const convert = (a: LegacySession["attempts"][number]) => {
+    const n = scenarioNetwork("acl");
+    if (a.rules[0] === "allow-443") n.router.rules.reverse();
+    return makeAttempt(n, a.revision, a.prediction);
+  };
+  const s: Session = {
+    ...old,
+    scenarioId: "acl",
+    attempts: old.attempts.map(convert),
+    current: old.current ? convert(old.current) : null,
+  };
+  return workspaceFor(s, false);
 }
 export function decodeSession(
   value: unknown,
 ):
-  | { kind: "restored"; session: Session }
+  | { kind: "restored"; session: Workspace; migrated?: true }
   | { kind: "incompatible" }
   | { kind: "invalid" } {
   if (!object(value)) return { kind: "invalid" };
+  if (value.formatVersion === 1) {
+    const old = decodeLegacy(value);
+    return old.kind === "restored"
+      ? { kind: "restored", session: migrate(old.session), migrated: true }
+      : old;
+  }
   if (
     value.formatVersion !== FORMAT_VERSION ||
     value.scenarioVersion !== SCENARIO_VERSION ||
@@ -117,53 +233,21 @@ export function decodeSession(
     const s = value.state;
     if (
       !object(s) ||
-      !validNetwork(s.network) ||
-      !integer(s.revision) ||
-      !(s.selected === null || device(s.selected)) ||
-      !path(s.path) ||
-      !(s.stop === "" || stop(s.stop)) ||
-      !(s.reason === "" || reason(s.reason)) ||
-      !Array.isArray(s.attempts) ||
-      !integer(s.step) ||
-      !(s.undo === null || validNetwork(s.undo))
+      !scenario(s.activeScenario) ||
+      typeof s.showPicker !== "boolean" ||
+      !object(s.labs)
     )
-      throw Error("session");
-    const attempts = s.attempts.map(readAttempt);
-    if (attempts.some((a) => a.revision > Number(s.revision)))
-      throw Error("revision");
-    let current: Attempt | null = null;
-    if (s.current !== null) {
-      current = readAttempt(s.current);
-      if (
-        !attempts.length ||
-        JSON.stringify(current) !== JSON.stringify(attempts.at(-1)) ||
-        current.revision !== s.revision ||
-        current.rules.join(",") !==
-          s.network.router.rules.map((r) => r.id).join(",")
-      )
-        throw Error("current");
-    }
-    if (s.step >= (current?.result.trace.length ?? 1)) throw Error("step");
-    if (
-      !attempts.length &&
-      (s.revision !== 0 ||
-        s.undo !== null ||
-        s.network.router.rules[0].action !== "deny")
-    )
-      throw Error("locked");
+      throw Error("workspace");
+    const labs: Workspace["labs"] = {};
+    for (const id of scenarioIds)
+      if (s.labs[id] !== undefined) labs[id] = readSession(s.labs[id], id);
+    if (!labs[s.activeScenario]) throw Error("active");
     return {
       kind: "restored",
       session: {
-        network: s.network,
-        revision: s.revision,
-        selected: s.selected,
-        path: s.path,
-        stop: s.stop,
-        reason: s.reason,
-        attempts,
-        current,
-        step: s.step,
-        undo: s.undo,
+        activeScenario: s.activeScenario,
+        showPicker: s.showPicker,
+        labs,
       },
     };
   } catch {
