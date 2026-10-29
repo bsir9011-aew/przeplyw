@@ -1,21 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  deviceIds,
-  type DeviceId,
-  type Reason,
-  type Result,
-} from "../network/model";
-import { initialNetwork, probe } from "../network/scenario";
+import { useEffect, useRef } from "react";
+import { deviceIds, type DeviceId, type Reason } from "../network/model";
+import { probe } from "../network/scenario";
 import { simulate } from "../network/simulate";
 import { assess, type Prediction } from "../assessment/feedback";
 
-type Attempt = {
-  revision: number;
-  rules: string[];
-  prediction: Prediction;
-  result: Result;
-  checks: Result[];
-};
+import { useLabSession } from "../session/useLabSession";
+import type { Attempt } from "../session/model";
+import PwaStatus from "./PwaStatus";
 const reasons: Record<Reason, string> = {
   acl: "Reguła ACL",
   gateway: "Brama hosta",
@@ -57,16 +48,29 @@ function Icon({ kind }: { kind: DeviceId }) {
   );
 }
 export default function App() {
-  const [network, setNetwork] = useState(initialNetwork);
-  const [revision, setRevision] = useState(0);
-  const [selected, setSelected] = useState<DeviceId | null>(null);
-  const [path, setPath] = useState<DeviceId[]>(["PC1"]);
-  const [stop, setStop] = useState<Prediction["stop"] | "">("");
-  const [reason, setReason] = useState<Reason | "">("");
-  const [attempts, setAttempts] = useState<Attempt[]>([]);
-  const [current, setCurrent] = useState<Attempt | null>(null);
-  const [step, setStep] = useState(0);
-  const [undo, setUndo] = useState<typeof network | null>(null);
+  const saved = useLabSession();
+  const {
+    network,
+    revision,
+    selected,
+    path,
+    stop,
+    reason,
+    attempts,
+    current,
+    step,
+    undo,
+  } = saved.session;
+  const setNetwork = saved.setter("network");
+  const setRevision = saved.setter("revision");
+  const setSelected = saved.setter("selected");
+  const setPath = saved.setter("path");
+  const setStop = saved.setter("stop");
+  const setReason = saved.setter("reason");
+  const setAttempts = saved.setter("attempts");
+  const setCurrent = saved.setter("current");
+  const setStep = saved.setter("step");
+  const setUndo = saved.setter("undo");
   const resultPanel = useRef<HTMLElement>(null);
   const predictionHeading = useRef<HTMLHeadingElement>(null);
   const canExperiment = attempts.length > 0;
@@ -121,6 +125,10 @@ export default function App() {
       prediction: { path: [...path], stop, reason },
       result: simulate(network, probe()),
       checks: [simulate(network, probe(443)), simulate(network, probe(22))],
+      assessment: assess(
+        { path: [...path], stop, reason },
+        simulate(network, probe()),
+      ),
     };
     setAttempts((a) => [...a, attempt]);
     setCurrent(attempt);
@@ -137,7 +145,8 @@ export default function App() {
           NETWORK LAB <b>01</b>
         </span>
       </header>
-      <main id="lab">
+      <PwaStatus {...saved} />
+      <main id="lab" inert={!saved.ready} aria-busy={!saved.ready}>
         <div className="eyebrow">
           <span /> LABORATORIUM SIECI <span className="duration">~ 3 MIN</span>
         </div>
@@ -580,7 +589,7 @@ export default function App() {
         )}
         <footer>
           <span>PRZEWIDŹ. SPRAWDŹ. ZROZUM.</span>
-          <span>Prototyp 0.1 · historia do odświeżenia</span>
+          <span>Prototyp 0.2 · sesja na tym urządzeniu</span>
         </footer>
       </main>
     </div>
